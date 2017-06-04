@@ -15,8 +15,8 @@ namespace BatteryMonitor
         private readonly SerialDisposable _subscription = new SerialDisposable();
         private readonly ILogger _logger = LogManager.GetLogger("Monitor");
 
-        public const int ProbeIntervalSeconds = 5;
-        public const int NoiseThresholdSeconds = 10;
+        public const int ProbeIntervalSeconds = 30;
+        public const int NoiseThresholdSeconds = (ProbeIntervalSeconds * 3) + 3;
 
         public void Start()
         {
@@ -46,8 +46,13 @@ namespace BatteryMonitor
                 .DistinctUntilChanged()
                 .Skip(1)
                 .Throttle(TimeSpan.FromSeconds(NoiseThresholdSeconds), TaskPoolScheduler.Default)
+                .DistinctUntilChanged()
                 .Select(StatusToString)
-                .Subscribe(s => SendEmail(s, ProvidePowerStateChangeBody));
+                .Subscribe(s =>
+                {
+                    _logger.Info("Power status changed to {0} - sending notification email", s);
+                    SendEmail(s, ProvidePowerStateChangeBody);
+                });
         }
 
         private IDisposable SubscribeStatusNotification()
@@ -57,7 +62,11 @@ namespace BatteryMonitor
             return Observable.Timer(when, TimeSpan.FromHours(24), TaskPoolScheduler.Default)
                 .Select(_ => GetCurrentPowerstatus())
                 .Select(StatusToString)
-                .Subscribe(s => SendEmail(s, ProvidePowerStateMonitoringStarted));
+                .Subscribe(s =>
+                {
+                    _logger.Info("Sending daily update email - current state: {0}", s);
+                    SendEmail(s, ProvidePowerStateMonitoringStarted);
+                });
         }
 
         private void SendEmail(string status, Action<MailMessage, string> fillMessageDetails)
